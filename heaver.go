@@ -2,7 +2,7 @@ package heaver
 
 import (
 	"errors"
-	"heaverd-ng/libstats/lxc"
+	"github.com/brnv/go-lxc"
 	"os/exec"
 	"regexp"
 	"strings"
