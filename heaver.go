@@ -2,10 +2,11 @@ package heaver
 
 import (
 	"errors"
-	"github.com/brnv/go-lxc"
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/brnv/go-lxc"
 )
 
 var (
@@ -22,13 +23,17 @@ var (
 	reList           = regexp.MustCompile(`\s*([\d\w-\.]*):\s([a-z]*).*:\s([\d\.]*)/`)
 )
 
-func Create(containerName string, image []string) (lxc.Container, error) {
+func Create(containerName string, image []string, key string) (lxc.Container, error) {
 	createArgs[2] = containerName
 
 	args := createArgs
 	for _, i := range image {
 		args = append(args, "-i")
 		args = append(args, i)
+	}
+	if key != "" {
+		args = append(args, "--raw-key")
+		args = append(args, key)
 	}
 	for _, n := range netInterfaceArgs {
 		args = append(args, n)
