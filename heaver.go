@@ -1,6 +1,7 @@
 package heaver
 
 import (
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"regexp"
@@ -22,6 +23,11 @@ var (
 	reDestroyed      = regexp.MustCompile("destroyed")
 	reList           = regexp.MustCompile(`\s*([\d\w-\.]*):\s([a-z]*).*:\s([\d\.]*)/`)
 )
+
+type Image struct {
+	Updated string `json:"updated"`
+	Size    int64  `json:"size"`
+}
 
 func Create(containerName string, image []string, key string) (lxc.Container, error) {
 	createArgs[2] = containerName
@@ -90,7 +96,7 @@ func Control(containerName string, action string) error {
 	return nil
 }
 
-func List(host string) (map[string]lxc.Container, error) {
+func ListContainers(host string) (map[string]lxc.Container, error) {
 	cmd := exec.Command("heaver", "-L")
 	output, err := cmd.Output()
 	if err != nil {
@@ -110,6 +116,37 @@ func List(host string) (map[string]lxc.Container, error) {
 				Ip:     parsed[3],
 			}
 		}
+	}
+
+	return list, nil
+}
+
+func ListImages() (map[string]Image, error) {
+	cmd := exec.Command("heaver-img", "-Qj")
+	raw, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	jsonResp := struct {
+		Status string          `json:"status"`
+		Data   json.RawMessage `json:"data"`
+		Error  string          `json:"error"`
+	}{}
+
+	err = json.Unmarshal(raw, &jsonResp)
+	if err != nil {
+		return nil, err
+	}
+
+	if jsonResp.Error != "" {
+		return nil, errors.New(jsonResp.Error)
+	}
+
+	list := make(map[string]Image)
+	err = json.Unmarshal(jsonResp.Data, &list)
+	if err != nil {
+		return nil, err
 	}
 
 	return list, nil
