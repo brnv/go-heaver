@@ -27,6 +27,7 @@ var (
 type Image struct {
 	Updated string `json:"updated"`
 	Size    int64  `json:"size"`
+	ZfsPath string `json:"zfs_path"`
 }
 
 func Create(containerName string, image []string, key string) (lxc.Container, error) {
