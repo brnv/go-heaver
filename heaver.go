@@ -11,17 +11,21 @@ import (
 )
 
 var (
-	createArgs       = []string{"heaver", "-CSn", ""}
+	createArgs       = []string{"heaver", "-CSn", "", "--format", "json"}
 	netInterfaceArgs = []string{"--net", "br0"}
 	controlArgs      = []string{"heaver", "", ""}
+	listArgs         = []string{"heaver", "-Lm", "--format", "json"}
 	startArg         = "-Sn"
 	stopArg          = "-Tn"
 	destroyArg       = "-Dn"
-	reIp             = regexp.MustCompile("(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})")
 	reStarted        = regexp.MustCompile("started")
 	reStopped        = regexp.MustCompile("stopped")
 	reDestroyed      = regexp.MustCompile("destroyed")
-	reList           = regexp.MustCompile(`\s*([\d\w-\.]*):\s([a-z]*).*:\s([\d\.]*)/`)
+)
+
+const (
+	StatusActive   = "active"
+	StatusInactive = "inactive"
 )
 
 type Image struct {
@@ -52,18 +56,34 @@ func Create(containerName string, image []string, key string) (lxc.Container, er
 	if err != nil {
 		return lxc.Container{Status: "error"}, errors.New(string(output))
 	}
+	messages := strings.Split(string(output), "\n")
+
+	heaverOutputJson := struct {
+		Data struct {
+			Ips        []string
+			Filesystem string
+			Mountpoint string
+		}
+	}{}
+
+	err = json.Unmarshal([]byte(messages[0]), &heaverOutputJson)
+
+	if err != nil {
+		return lxc.Container{Status: "error"}, err
+	}
 
 	ip := ""
-	matches := reIp.FindStringSubmatch(string(output))
-	if matches != nil {
-		ip = matches[1]
+	if len(heaverOutputJson.Data.Ips) != 0 {
+		ip = heaverOutputJson.Data.Ips[0]
 	}
 
 	container := lxc.Container{
-		Name:   containerName,
-		Status: "created",
-		Image:  image,
-		Ip:     ip,
+		Name:       containerName,
+		Status:     "created",
+		Image:      image,
+		Filesystem: heaverOutputJson.Data.Filesystem,
+		Mountpoint: heaverOutputJson.Data.Mountpoint,
+		Ip:         ip,
 	}
 
 	return container, nil
@@ -98,24 +118,38 @@ func Control(containerName string, action string) error {
 }
 
 func ListContainers(host string) (map[string]lxc.Container, error) {
-	cmd := exec.Command("heaver", "-L")
+	cmd := getHeaverCmd(listArgs)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
 
-	list := make(map[string]lxc.Container)
-	containers := strings.Split(string(output), "\n")
-	for _, container := range containers {
-		parsed := reList.FindStringSubmatch(container)
-		if parsed != nil {
-			name := parsed[1]
-			list[name] = lxc.Container{
-				Name:   name,
-				Host:   host,
-				Status: parsed[2],
-				Ip:     parsed[3],
-			}
+	heaverOutputJson := struct {
+		Data map[string]struct {
+			Active     bool
+			Ips        map[string][]string
+			Filesystem string
+			Mountpoint string
+		}
+	}{}
+
+	err = json.Unmarshal(output, &heaverOutputJson)
+
+	list := map[string]lxc.Container{}
+
+	for name, container := range heaverOutputJson.Data {
+		status := StatusActive
+		if container.Active == false {
+			status = StatusInactive
+		}
+
+		list[name] = lxc.Container{
+			Name:       name,
+			Host:       host,
+			Status:     status,
+			Ips:        container.Ips,
+			Filesystem: container.Filesystem,
+			Mountpoint: container.Mountpoint,
 		}
 	}
 
